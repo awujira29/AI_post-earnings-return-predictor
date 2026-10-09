@@ -19,7 +19,7 @@ import os
 import httpx
 from openai import OpenAI
 from pydantic import BaseModel, Field
-
+import statistics
 from explaining_markets.config import openai_model
 
 _openai: OpenAI | None = None  # lazy: importing this file must not require a key
@@ -33,7 +33,7 @@ _openai_warned = False         # one-shot warning when no key is configured
 SUMMARY_TIMEOUT_SECONDS = 15.0
 LLM_TIMEOUT_SECONDS = 120.0
 LLM_MAX_RETRIES = 1
-
+N_DRAWS = 5 # number of llm calls to avarage prediction
 
 def predict(event: dict) -> list[dict]:
     """Return predictions for one Explaining Markets event.
@@ -273,10 +273,19 @@ def _ask_llm(*, summary: dict, ticker: str, event_type: str) -> float:
             {"role": "user", "content": user_prompt},
         ]
 
-    result = _one_draw(messages)
-    if result is None:
+    results = []
+
+    for _ in range(N_DRAWS):
+        pred = _one_draw(messages)
+        if pred is None:
+            continue
+        results.append(pred)
+    
+    print(f"[INFO] {ticker}: {len(results)}/{N_DRAWS} draws ok -> {results}")
+    if not results:
         return 0.5
-    return result
+
+    return statistics.mean(results)
 
 
 def _one_draw(messages: list[dict]) -> float | None:
