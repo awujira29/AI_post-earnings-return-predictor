@@ -268,15 +268,29 @@ def _ask_llm(*, summary: dict, ticker: str, event_type: str) -> float:
         f"Predict the next-day unexpected-return percentile for {ticker}."
     )
 
-    resp = _openai.chat.completions.parse(
-        model=openai_model(),
-        messages=[
+    messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
-        ],
-        response_format=Prediction,
-    )
-    parsed = resp.choices[0].message.parsed
-    if parsed is None:
-        return 0.5  # model refused; competition expects a number
-    return parsed.predicted_percentile
+        ]
+
+    result = _one_draw(messages)
+    if result is None:
+        return 0.5
+    return result
+
+
+def _one_draw(messages: list[dict]) -> float | None:
+    try:
+        resp = _openai.chat.completions.parse(
+                model=openai_model(),
+                messages=messages,
+                response_format=Prediction,
+            )
+        parsed = resp.choices[0].message.parsed
+
+        if parsed is None:
+            return None  # model refused; competition expects a number
+        return parsed.predicted_percentile
+    except Exception as exc:
+        print(f"[WARN] LLM draw failed: {exc}")
+        return None
