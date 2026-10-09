@@ -20,6 +20,7 @@ import httpx
 from openai import OpenAI
 from pydantic import BaseModel, Field
 import statistics
+from concurrent.futures import ThreadPoolExecutor
 from explaining_markets.config import openai_model
 
 _openai: OpenAI | None = None  # lazy: importing this file must not require a key
@@ -273,15 +274,14 @@ def _ask_llm(*, summary: dict, ticker: str, event_type: str) -> float:
             {"role": "user", "content": user_prompt},
         ]
 
-    results = []
 
-    for _ in range(N_DRAWS):
-        pred = _one_draw(messages)
-        if pred is None:
-            continue
-        results.append(pred)
-    
+    with ThreadPoolExecutor(max_workers=N_DRAWS) as pool:
+        draws = list(pool.map(_one_draw, [messages] * N_DRAWS))
+
+    results = [d for d in draws if d is not None]
+
     print(f"[INFO] {ticker}: {len(results)}/{N_DRAWS} draws ok -> {results}")
+    
     if not results:
         return 0.5
 
